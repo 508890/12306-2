@@ -12,6 +12,7 @@ login_url = "https://kyfw.12306.cn/otn/resources/login.html"
 uamtk_url = "https://kyfw.12306.cn/passport/web/auth/uamtk-static"
 qr_url = "https://kyfw.12306.cn/passport/web/create-qr64"
 conf_url = "https://kyfw.12306.cn/otn/login/conf"
+contact_url = "https://kyfw.12306.cn/otn/passengers/query"
 
 def headers(ref=None):
     user_agent = [
@@ -88,6 +89,14 @@ class Login():
                 elif code_status == "2":
                     self.print_status("确认成功，即将登录。。。")
                     sys.stdout.write('\n')
+                    self.session.get(url="https://kyfw.12306.cn/otn/passport?redirect=/otn/login/userLogin", 
+                                headers=headers())
+                    verfiy = self.session.post(url="https://kyfw.12306.cn/passport/web/auth/uamtk", data={"appid":"otn"},
+                                headers=headers())
+                    verfiy_json = json.loads(verfiy.text)
+                    tk = verfiy_json.get("newapptk", '')
+                    self.session.post(url="https://kyfw.12306.cn/otn/uamauthclient", data={'tk':tk},
+                                headers=headers())
                     break
                 elif code_status == "3":
                     self.print_status("二维码已过期。。。")
@@ -97,16 +106,110 @@ class Login():
                 print(e)
             time.sleep(2)
 
+
     def print_status(self, value):
         sys.stdout.write('\r')
         sys.stdout.write(value)
         sys.stdout.flush()
+
+    def get_contact(self):
+        data = {
+            "pageIndex": "1",
+            "pageSize": "10"
+        }
+        res = self.session.post(url=contact_url, data=data)
+        try:
+            contact_json = json.loads(res.text)
+            if contact_json.get('status', '')==True:
+                contacts = contact_json.get('data',{}).get('datas',[])
+                for contact in contacts:
+                    print(contact)
+        except Exception as e:
+            print(e)
+
+    def ordain_ticket(self):
+        self.session.post(url="https://kyfw.12306.cn/otn/login/checkUser", data={"_json_att":""}, 
+                    headers=headers())
+        data = {
+            "secretStr": "",
+            "train_date": "2018-12-15",
+            "back_train_date": "2018-12-13",
+            "tour_flag": "dc",
+            "purpose_codes": "ADULT",
+            "query_from_station_name": "成都",
+            "query_to_station_name": "西昌",
+            "undefined":"" 
+        }
+        self.session.post(url="https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest", data=data, headers=headers())
+
+        self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/initDc", data={"_json_att":""},
+                    headers=headers())
+
+        check_order_data = {
+            "cancel_flag": "2",
+            "bed_level_order_num": "000000000000000000000000000000",
+            "passengerTicketStr": "1,0,3,何思贤,1,511324199712182332,14781275573,N",
+            "oldPassengerStr": "何思贤,1,511324199712182332,3_",
+            "tour_flag": "dc",
+            "randCode": "",
+            "whatsSelect": "1",
+            "_json_att": "",
+            "REPEAT_SUBMIT_TOKEN": "a27d644aaee56e7b435307b2ab4b94e8"
+        }
+        self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo", data=check_order_data)
+
+
+        queue_count_data = {
+            "train_date": "Sat Dec 15 2018 00:00:00 GMT+0800 (China Standard Time)",
+            "train_no": "760000K1130D",
+            "stationTrainCode": "K113",
+            "seatType": "1",
+            "fromStationTelecode": "CDW",
+            "toStationTelecode": "ECW",
+            "leftTicket": "Wmy83lFVAhWWVO1Op5NUdo8iBPOlXyPN7zFg%2FfdmKFuIFca6A8pcA7yyarc%3D",
+            "purpose_codes": "00",
+            "train_location": "W1",
+            "_json_att": "",
+            "REPEAT_SUBMIT_TOKEN": "a27d644aaee56e7b435307b2ab4b94e8"
+        }
+        self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount", data=queue_count_data)
+
+        confirm_queue_data = {
+            "passengerTicketStr": "1,0,3,何思贤,1,511324199712182332,14781275573,N",
+            "oldPassengerStr": "何思贤,1,511324199712182332,3_",
+            "randCode": "",
+            "purpose_codes": "00",
+            "key_check_isChange": "D9DCF91FC78A440393B07BC4A19EC934E355EF75AC3880555EA16766",
+            "leftTicketStr": "Wmy83lFVAhWWVO1Op5NUdo8iBPOlXyPN7zFg%2FfdmKFuIFca6A8pcA7yyarc%3D",
+            "train_location": "W1",
+            "choose_seats":"" ,
+            "seatDetailType": "000",
+            "whatsSelect": "1",
+            "roomType": "00",
+            "dwAll": "N",
+            "_json_att":"", 
+            "REPEAT_SUBMIT_TOKEN": "a27d644aaee56e7b435307b2ab4b94e8"
+        }
+        self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue",data=confirm_queue_data)
+
+        order_dc_queue_data = {
+            "orderSequence_no": "E267766727",
+            "_json_att": "",
+            "REPEAT_SUBMIT_TOKEN": "a27d644aaee56e7b435307b2ab4b94e8"
+        }
+        self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue", data=order_dc_queue_data)
+
+        self.session.post(url="https://kyfw.12306.cn/otn//payOrder/init?random=1544712281252", data=order_dc_queue_data)
+
+    def keep_online(self):
+        self.session.get(url="")
 
     def start(self):
         if self.method == 'scan':
             uid = self.get_qr64()
             if uid:
                 self.check_qr(uid)
+            self.get_contact()
 
 if __name__ == "__main__":
     log = Login()
