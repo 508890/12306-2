@@ -18,7 +18,7 @@ class Qrcode():
             return 
         elif image_url:
             try:
-                img = Image.open(BytesIO(requests.get(image_url, headers=HEADERS).content))
+                img = Image.open(BytesIO(requests.get(image_url).content))
             except Exception as e:
                 print(e)
                 return 
@@ -58,7 +58,7 @@ class Qrcode():
             print("you must choice one of imge of string!") 
     
     def create(self, string, pic_name='qrcode.png', show_terminal=1, version=1):
-        qr_img = qrcode.QRCode(version=version,
+        qr_img = qrcode.QRCode(version=version, border=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L)
         qr_img.add_data(string)
         qr_img.make()
@@ -67,7 +67,7 @@ class Qrcode():
         # img = Image.open(pic_name)
         # img.show()
         if show_terminal:
-            qr_img.print_tty()
+            qr_img.print_ascii()#invert=True)
 
 
 if __name__ == "__main__":

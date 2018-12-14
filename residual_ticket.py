@@ -53,13 +53,14 @@ class TrainTicket():
         query_url = self.tickets_api.format(DATE, start_station_code, end_station_code, TICKET_TYPE)
         res = requests.get(url=query_url, headers=TrainTicket._headers())
         # try:
-        self.parser_ticket_data(json.loads(res.text), start_station_name, end_station_name, DATE, search_price)
+        tickets_data = self.parser_ticket_data(json.loads(res.text), start_station_name, end_station_name, DATE, search_price)
+        return tickets_data
         # except:
         #     return {"status":False,"data":"Data Error！"}
 
    
     def parser_ticket_data(self, ticket_data, start_station, end_station, date, search_price):
-        train_ticket_data = [] 
+        train_ticket_data = {} 
         station_map = ticket_data.get('data',{}).get('map',{})
         result = ticket_data.get('data',{}).get('result', [])
         if result:
@@ -70,11 +71,11 @@ class TrainTicket():
                 secretStr = ticket_info[0]
                 buttonTextInfo = ticket_info[1]
                 train_no = ticket_info[2]
-                station_train_code = ticket_info[3]
+                train_num = ticket_info[3]
                 start_station_telecode = ticket_info[4]
                 end_station_telecode = ticket_info[5]
-                # from_station_telecode = ticket_info[6]
-                # to_station_telecode = ticket_info[7]
+                from_station_telecode = ticket_info[6]
+                to_station_telecode = ticket_info[7]
                 start_time = ticket_info[8]
                 arrive_time = ticket_info[9]
                 lishi = ticket_info[10]
@@ -134,8 +135,12 @@ class TrainTicket():
                                 ze_num = "{}\n{}".format(ze_num, ticket_price.get(scode, ''))
                     else:
                         buttonTextInfo = "{}\n{}".format(buttonTextInfo, "票价查询失败")
-                        
-                self.table.add_row([station_train_code, "{}-{}".format(self.city_code.code_name_dict.get(start_station_telecode,''),
+                train_ticket_data[train_num] = [secretStr,"{}-{}".format(self.city_code.code_name_dict.get(start_station_telecode,''),
+                                    self.city_code.code_name_dict.get(end_station_telecode,'')), 
+                            from_station_name, to_station_name, from_station_telecode,to_station_telecode,canWebBuy,date,yp_info,
+                            location_code,train_seat_feature,yp_ex]        
+                
+                self.table.add_row([train_num, "{}-{}".format(self.city_code.code_name_dict.get(start_station_telecode,''),
                                     self.city_code.code_name_dict.get(end_station_telecode,'')), 
                             "{}\n{}".format(from_station_name, start_time), "{}\n{}".format(to_station_name, arrive_time),lishi, 
                             sw_tz_num, zy_num, ze_num, gr_num, rw_num, srrb_num, yw_num,rz_num, yz_num, wz_num, 
@@ -143,6 +148,7 @@ class TrainTicket():
             print(self.table)
         else:
             print("No tickets")
+        return train_ticket_data
 
 
     def get_ticket_price(self,train_no, from_s_no, to_s_no, seat_type, train_date):
