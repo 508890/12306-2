@@ -3,6 +3,7 @@ import json
 import random
 import time
 import requests
+import sendSMS
 from city_code import CityCode
 from prettytable import PrettyTable
 
@@ -52,11 +53,11 @@ class TrainTicket():
         end_station_name, end_station_code = list(end_station_data.get('result', {}).items())[0]
         query_url = self.tickets_api.format(DATE, start_station_code, end_station_code, TICKET_TYPE)
         res = requests.get(url=query_url, headers=TrainTicket._headers())
-        # try:
-        tickets_data = self.parser_ticket_data(json.loads(res.text), start_station_name, end_station_name, DATE, search_price)
-        return tickets_data
-        # except:
-        #     return {"status":False,"data":"Data Error！"}
+        try:
+            tickets_data = self.parser_ticket_data(json.loads(res.text), start_station_name, end_station_name, DATE, search_price)
+            return tickets_data
+        except:
+            return {"status":False}
 
    
     def parser_ticket_data(self, ticket_data, start_station, end_station, date, search_price):
@@ -135,10 +136,11 @@ class TrainTicket():
                                 ze_num = "{}\n{}".format(ze_num, ticket_price.get(scode, ''))
                     else:
                         buttonTextInfo = "{}\n{}".format(buttonTextInfo, "票价查询失败")
-                train_ticket_data[train_num] = [secretStr,"{}-{}".format(self.city_code.code_name_dict.get(start_station_telecode,''),
-                                    self.city_code.code_name_dict.get(end_station_telecode,'')), 
-                            from_station_name, to_station_name, from_station_telecode,to_station_telecode,canWebBuy,date,yp_info,
-                            location_code,train_seat_feature,yp_ex]        
+                train_ticket_data[train_num] = ticket_info #[secretStr,train_no,train_num, 
+                            # from_station_name, to_station_name, from_station_telecode,to_station_telecode,canWebBuy,date,yp_info,
+                            # location_code,train_seat_feature,yp_ex, swz_num,tz_num, zy_num, ze_num, gr_num, rw_num, srrb_num, 
+                            # yw_num,rz_num, yz_num, wz_num,  
+                            # qt_num]        
                 
                 self.table.add_row([train_num, "{}-{}".format(self.city_code.code_name_dict.get(start_station_telecode,''),
                                     self.city_code.code_name_dict.get(end_station_telecode,'')), 
@@ -185,9 +187,30 @@ class TrainTicket():
 
 if __name__ == "__main__":
     ticket = TrainTicket()
-    start = input("请输入起点：")
-    end = input("请输入终点：")
-    date_str = input("请输入时间(eg:2018-12-12)：")
+    # start = input("请输入起点：")
+    # end = input("请输入终点：")
+    # date_str = input("请输入时间(eg:2018-12-12)：")
+    # # tickect_type = input("请输入类型：")
+    # show_price = input("是否需要显示票价信息(1,显示、2,不显示)：")
+    start = "沈阳"
+    end = "南充"
+    date_str = "2019-01-15"
     # tickect_type = input("请输入类型：")
-    show_price = input("是否需要显示票价信息(1,显示、2,不显示)：")
-    ticket.search_ticket(start,end,date_str,show_price)
+    show_price = 2
+    train_no = "K388"
+    
+    while 1:
+        train_tickets = ticket.search_ticket(start,end,date_str,show_price)
+        ticket_data = train_tickets.get(train_no, [])
+        if ticket_data:
+            yw = ticket_data[28]
+            yz = ticket_data[29]
+            notice_times = 1
+            if yw:
+                notice_str = "你好，{} {}至{}的{}列车的硬卧还有票，请抓紧时间购票！这是第{}次通知！".format(date_str,start,end,train_no, notice_times)
+                notice_times+=1
+                sendSMS.sendGroupTemplateSMS(notice=notice_str)
+                if notice_times>3:
+                    break  
+        time.sleep(int(str(random.uniform(30,50))[:2]))
+
