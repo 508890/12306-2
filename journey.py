@@ -44,6 +44,9 @@ class Login():
         self.contact_table = PrettyTable(["编号","姓名","性别","证件类型","证件号","乘客类型","手机号","邮箱"])
 
     def get_qr64(self, show='TERMINAL'):
+        '''
+        get qrcode picture, return params uid
+        '''
         data = {"appid":"otn"}
         qr_res = self.session.post(url=qr_url, data=data)
 
@@ -65,6 +68,9 @@ class Login():
             return 
 
     def check_qr(self, uid):
+        '''
+        check qrcode status
+        '''
         data = {
             "uuid": uid,
             "appid": "otn"
@@ -314,7 +320,7 @@ class Login():
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "Host": "kyfw.12306.cn",
             "If-Modified-Since": "0",
-            "Referer":"https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc",
+            "Referer":"https://kyfw.12306.cn/otn/leftTicket/init",
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.80 Safari/537.36",
             "X-Requested-With": "XMLHttpRequest"
         }
