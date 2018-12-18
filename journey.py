@@ -1,24 +1,18 @@
 #encoding:utf-8
+import re
 import sys 
 import time
 import random 
 import json 
-import base64
-import re 
+import base64 
 import requests
 from urllib.parse import unquote 
 from prettytable import PrettyTable
 from qrcode_tool import Qrcode
 from residual_ticket import TrainTicket
 
-check_qr_url = "https://kyfw.12306.cn/passport/web/checkqr"
-login_url = "https://kyfw.12306.cn/otn/resources/login.html"
-uamtk_url = "https://kyfw.12306.cn/passport/web/auth/uamtk-static"
-qr_url = "https://kyfw.12306.cn/passport/web/create-qr64"
+
 conf_url = "https://kyfw.12306.cn/otn/login/conf"
-contact_url = "https://kyfw.12306.cn/otn/passengers/query"
-
-
 user_agent = [
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.80 Safari/537.36",
         "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1",
@@ -31,16 +25,18 @@ user_agent = [
     ]
 
 
-class Login():
+class TrainJourney():
     
     def __init__(self, method='scan', username=None, passwd=None):
+        login_url = "https://kyfw.12306.cn/otn/resources/login.html"
+        uamtk_url = "https://kyfw.12306.cn/passport/web/auth/uamtk-static"
         self.method = method 
         self.qr_code = Qrcode()
         self.train_ticket = TrainTicket()
         self.session = requests.session()
         self.session.headers=Login.headers()
         self.session.get(url=login_url)
-        self.session.post(url=uamtk_url,data={"appid":"otn"})
+        self.session.post(url=uamtk_url, data={"appid":"otn"})
         self.contact_table = PrettyTable(["编号","姓名","性别","证件类型","证件号","乘客类型","手机号","邮箱"])
 
     def get_qr64(self, show='TERMINAL'):
@@ -48,8 +44,8 @@ class Login():
         get qrcode picture, return params uid
         '''
         data = {"appid":"otn"}
+        qr_url = "https://kyfw.12306.cn/passport/web/create-qr64"
         qr_res = self.session.post(url=qr_url, data=data)
-
         try:
             qr_json = json.loads(qr_res.text)
             if qr_json.get("result_message", '') == "生成二维码成功":
@@ -71,11 +67,11 @@ class Login():
         '''
         check qrcode status
         '''
-        data = {
-            "uuid": uid,
-            "appid": "otn"
-        }
         times = 0
+        data = {"uuid": uid, "appid": "otn"}
+        check_qr_url = "https://kyfw.12306.cn/passport/web/checkqr"
+        user_login_url = "https://kyfw.12306.cn/otn/passport?redirect=/otn/login/userLogin"
+        uamauthclient_url = "https://kyfw.12306.cn/otn/uamauthclient"
         while 1:
             res = self.session.post(url=check_qr_url, data=data)
             try:
@@ -88,14 +84,16 @@ class Login():
                     self.print_status("扫描成功，请确认{}".format("。"*(times%4)))
                 elif code_status == "2":
                     self.print_status("确认成功，即将登录。。。")
-                    sys.stdout.write('\n')
-                    self.session.get(url="https://kyfw.12306.cn/otn/passport?redirect=/otn/login/userLogin")
-                    verfiy = self.session.post(url="https://kyfw.12306.cn/passport/web/auth/uamtk?callback=jQuery191{}_{}".format(
-                        ''.join(str(random.choice(range(10))) for _ in range(19)), int(round(time.time()*1000))), 
-                                data={"appid":"otn", "_json_att":""})
-                    verfiy_json = json.loads(verfiy.text.split('(')[1].split(')')[0])
-                    tk = verfiy_json.get("newapptk", '')
-                    self.session.post(url="https://kyfw.12306.cn/otn/uamauthclient", data={'tk':tk})
+                    self.session.get(url=user_login_url)
+                    uamtk_url = "https://kyfw.12306.cn/passport/web/auth/uamtk?callback=jQuery191{}_{}".format(
+                        ''.join(str(random.choice(range(10))) for _ in range(19)), int(round(time.time()*1000)))
+                    verfiy = self.session.post(url=uamtk_url, data={"appid":"otn", "_json_att":""})
+                    try:
+                        verfiy_json = json.loads(verfiy.text.split('(')[1].split(')')[0])
+                        tk = verfiy_json.get("newapptk", '')
+                    except:
+                        print("获取tk参数错误！")
+                    self.session.post(url=uamauthclient_url, data={'tk':tk})
                     break
                 elif code_status == "3":
                     self.print_status("二维码已过期。。。")
@@ -113,6 +111,7 @@ class Login():
         sys.stdout.flush()
 
     def get_contact(self):
+        contact_url = "https://kyfw.12306.cn/otn/passengers/query"
         data = {
             "pageIndex": "1",
             "pageSize": "10"
@@ -127,53 +126,44 @@ class Login():
         except Exception as e:
             print(e)
 
-    def ordain_ticket(self):
-        start = input("请输入起点：")
-        end = input("请输入终点：")
-        date_str = input("请输入时间(eg:2018-12-12)：")
-        show_price = input("是否需要显示票价信息(1,显示、2,不显示)：")
-        ticket_info = self.train_ticket.search_ticket(start,end,date_str,show_price)
-        if not ticket_info:
-            print("No tickets!")
 
-        _ = self.session.post(url="https://kyfw.12306.cn/otn/login/checkUser", data={"_json_att":""})
-        print(_.status_code)
-        print(_.text)
-        while 1:
-            choice_train_times = input("please input trains times:")
-            choice_train_info = ticket_info.get(choice_train_times, '')
-            if not choice_train_info:
-                print("input error!please retry!")
-            else:
-                break
+    def __check_user(self):
+        check_user_url = "https://kyfw.12306.cn/otn/login/checkUser"
+        self.session.post(url=check_user_url, data={"_json_att":""})
 
-
+    def __submit_order(self, train_info):
         data = {
-            "secretStr": unquote(choice_train_info[0]),
-            "train_date": date_str,
-            "back_train_date": "2018-12-14",
-            "tour_flag": "dc",
+            "secretStr": unquote(train_info[0]),
+            "train_date": "{}-{}-{}".format(train_info[:4], train_info[4:6], train_info[-2:]),
+            "back_train_date": time.strftime("%Y-%m-%d", time.localtime()),
+            "tour_flag": "dc", #单程
             "purpose_codes": "ADULT",
-            "query_from_station_name": choice_train_info[3],
-            "query_to_station_name": choice_train_info[4],
+            "query_from_station_name": train_info[37],
+            "query_to_station_name": train_info[38],
             "undefined":"" 
         }
-
-        a = self.session.post(url="https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest", data=data)
+        submit_order_url =  "https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest"
+        a = self.session.post(url=submit_order_url, data=data)
         print(a.text)
 
-        b = self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/initDc", data={"_json_att":""})
-        # print(b.text)
+    def __init_dc(self):
+        init_dc_url = "https://kyfw.12306.cn/otn/confirmPassenger/initDc"
+        b = self.session.post(url=init_dc_url, data={"_json_att":""})
+        print(b.text)
         rst_re = re.search(r"(?<=RepeatSubmitToken\s=\s\').+?(?=\';)", b.text)
         kci_re = re.search(r"(?<=key_check_isChange\':\').+?(?=\',)", b.text)
         lts_re = re.search(r"(?<=leftTicketStr\':\').+?(?=\',)", b.text)
         RepeatSubmitToken = rst_re.group() if rst_re else ""
         key_check_isChange = kci_re.group() if kci_re else ""
         leftTicketStr = lts_re.group() if lts_re else ""
+        return [RepeatSubmitToken,key_check_isChange,leftTicketStr]
 
-        c = self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs", 
+    def __get_passenger(self,RepeatSubmitToken):
+        get_passenger_url = "https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs"
+        c = self.session.post(url=get_passenger_url, 
         data={"_json_att":"", "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken})
         print(c.text)
+
         passsenger_data = json.loads(c.text)
         if passsenger_data.get('status', '') == True:
             contact_data = {}
@@ -199,6 +189,121 @@ class Login():
                 contact_data[passenger_code] = [passenger_name, sex_code, passenger_id_type_code, 
                             passenger_id_no, passenger_type, passenger_flag, mobile_no]
             print(self.contact_table)
+            return contact_data
+        else:
+            return
+
+    def __check_order_info(self,seat_type,  passenger_ticket_str,old_passenger_str,RepeatSubmitToken):
+        check_order_data = {
+            "cancel_flag": "2",
+            "bed_level_order_num": "000000000000000000000000000000",
+            "passengerTicketStr": passenger_ticket_str,
+            "oldPassengerStr": old_passenger_str,
+            "tour_flag": "dc",
+            "randCode": "",
+            "whatsSelect": "1",
+            "_json_att": "",
+            "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
+        }
+        check_order_url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
+        d = self.session.post(url=check_order_url, data=check_order_data)
+        print(d.text)
+
+    def __get_queue_count(self,train_info,leftTicketStr,RepeatSubmitToken):
+        GMT_FORMAT = '%a %b %d %Y 00:00:00 GMT+0800 (China Standard Time)'
+        queue_count_data = {
+            "train_date": time.strftime(GMT_FORMAT, time.localtime()),
+            "train_no": train_info[2],
+            "stationTrainCode": train_info[3],
+            "seatType": "1",
+            "fromStationTelecode": train_info[6],
+            "toStationTelecode": train_info[7],
+            "leftTicket": leftTicketStr,
+            "purpose_codes": "00",
+            "train_location": train_info[15],
+            "_json_att": "",
+            "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
+        }
+        get_queue_count_url = "https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount"
+        e = self.session.post(url=get_queue_count_url, data=queue_count_data)
+        print(e.text)
+
+    def __confirm_queue(self,passenger_ticket_str,old_passenger_str,key_check_isChange,
+                                    leftTicketStr,train_location, RepeatSubmitToken):
+        confirm_queue_data = {
+            "passengerTicketStr": passenger_ticket_str,
+            "oldPassengerStr": old_passenger_str,
+            "randCode": "",
+            "purpose_codes": "00",
+            "key_check_isChange": key_check_isChange,
+            "leftTicketStr": leftTicketStr,
+            "train_location": train_location,
+            "choose_seats":"" , #选座？？？
+            "seatDetailType": "000",
+            "whatsSelect": "1",
+            "roomType": "00",
+            "dwAll": "N",
+            "_json_att":"", 
+            "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
+        }
+        confirm_queue_url = "https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue"
+        f = self.session.post(url=confirm_queue_url,data=confirm_queue_data)
+        print(f.text)
+
+    def __get_order_id(self,RepeatSubmitToken):
+        get_orderid_url = ("https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?"
+                            "random={}".format(int(round(time.time()*1000)))+
+                            "&tourFlag=dc"
+                            "&_json_att="
+                            "&REPEAT_SUBMIT_TOKEN={}".format(RepeatSubmitToken))
+        g = self.session.get(url=get_orderid_url)
+        print(g.text)
+        try:
+            orderSequence_no = json.loads(g.text).get('data',{}).get('orderId','')
+            return orderSequence_no
+        except:
+            print("发生了错误！")
+            return 
+
+    def __result_order(self,orderSequence_no,RepeatSubmitToken):
+        result_queue_url = "https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue"
+        order_dc_queue_data = {
+            "orderSequence_no": orderSequence_no,
+            "_json_att": "",
+            "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
+        }
+        h = self.session.post(url=result_queue_url, data=order_dc_queue_data)
+        print(h.text)
+
+        pay_order_url = "https://kyfw.12306.cn/otn//payOrder/init?random="+str(int(round(time.time()*1000)))
+        i = self.session.post(url=pay_order_url, data=order_dc_queue_data)
+        print(i.text)
+
+    def ordain_ticket(self):
+        start = input("请输入起点：")
+        end = input("请输入终点：")
+        date_str = input("请输入时间(eg:2018-12-12)：")
+        show_price = input("是否需要显示票价信息(1,显示、2,不显示)：")
+        ticket_info = self.train_ticket.search_ticket(start,end,date_str,show_price)
+        if not ticket_info:
+            print("No tickets!")
+
+        while 1:
+            choice_train_times = input("please input trains times:")
+            choice_train_info = ticket_info.get(choice_train_times, '')
+            if not choice_train_info:
+                print("input error!please retry!")
+            else:
+                break
+        
+        self.__check_user()
+        
+        self.__submit_order(choice_train_info)
+
+        init_dc_params = self.__init_dc()
+        RepeatSubmitToken, key_check_isChange, leftTicketStr = init_dc_params
+
+        contact_data = self.__get_passenger(RepeatSubmitToken)
 
         while 1:
             choice_passenger = input("请选择乘客名或者乘客编号：")
@@ -212,95 +317,29 @@ class Login():
             else:
                 print("你输入的选项有误，请重新输入！")
 
-        # print("编号\t 类型")
-
         choice_seat_type = input("请选择座位类型：")
 
-        
+        #座位类型,0,票类型,乘客名,证件类型,证件号,手机号码,保存常用联系人(Y或N)
         passenger_ticket_str = ",".join([choice_seat_type, passenger_info[5], passenger_info[4], passenger_info[0],
-            passenger_info[2],passenger_info[3],passenger_info[6],'N'])
+                                    passenger_info[2],passenger_info[3],passenger_info[6],'N'])
         old_passenger_str = ",".join([passenger_info[0], passenger_info[2],passenger_info[3],passenger_info[4]+"_"])
+        
+        self.__check_order_info(choice_train_info, passenger_ticket_str, old_passenger_str, RepeatSubmitToken)
 
-        check_order_data = {
-            "cancel_flag": "2",
-            "bed_level_order_num": "000000000000000000000000000000",
-                                #座位类型,0,票类型,乘客名,证件类型,证件号,手机号码,保存常用联系人(Y或N)
-            "passengerTicketStr": passenger_ticket_str,
-                #   "1,0,3,何思贤,1,511324199712182332,14781275573,N",
-                                # 乘客名,证件类型,证件号,乘客类型
-            "oldPassengerStr": old_passenger_str,
-            # "何思贤,1,511324199712182332,3_",
-            "tour_flag": "dc",
-            "randCode": "",
-            "whatsSelect": "1",
-            "_json_att": "",
-            "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
-        }
-        d = self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo", data=check_order_data)
-        print(d.text)
+        self.__get_queue_count(choice_train_info, leftTicketStr, RepeatSubmitToken)
+
+        train_location = choice_train_info[15]
+        self.__confirm_queue(passenger_ticket_str,old_passenger_str,key_check_isChange,
+                                    leftTicketStr,train_location, RepeatSubmitToken)
+
+        orderSequence_no = self.__get_order_id(RepeatSubmitToken)
+
+        self.__result_order(orderSequence_no, RepeatSubmitToken)
 
 
-        GMT_FORMAT = '%a %b %d %Y 00:00:00 GMT+0800 (China Standard Time)'
-        queue_count_data = {
-            "train_date": time.strftime(GMT_FORMAT, time.localtime()),
-            "train_no": choice_train_info[1],
-            "stationTrainCode": choice_train_info[2],
-            "seatType": "1",
-            "fromStationTelecode": choice_train_info[5],
-            "toStationTelecode": choice_train_info[6],
-            "leftTicket": leftTicketStr,
-            "purpose_codes": "00",
-            "train_location": choice_train_info[10],
-            "_json_att": "",
-            "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
-        }
-        e = self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount", data=queue_count_data)
-        print(e.text)
-
-        confirm_queue_data = {
-            "passengerTicketStr": passenger_ticket_str,
-            "oldPassengerStr": old_passenger_str,
-            "randCode": "",
-            "purpose_codes": "00",
-            "key_check_isChange": key_check_isChange,
-            "leftTicketStr": leftTicketStr,
-            "train_location": choice_train_info[10],
-            "choose_seats":"" , #选座？？？
-            "seatDetailType": "000",
-            "whatsSelect": "1",
-            "roomType": "00",
-            "dwAll": "N",
-            "_json_att":"", 
-            "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
-        }
-        f = self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue",data=confirm_queue_data)
-        print(f.text)
-
-        get_orderid_url = ("https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?"
-                            "random={}".format(int(round(time.time()*1000)))+
-                            "&tourFlag=dc"
-                            "&_json_att="
-                            "&REPEAT_SUBMIT_TOKEN={}".format(RepeatSubmitToken))
-        g = self.session.get(url=get_orderid_url)
-        print(g.text)
-        try:
-            orderSequence_no = json.loads(g.text).get('data',{}).get('orderId','')
-        except:
-            print("发生了错误！")
-
-        order_dc_queue_data = {
-            "orderSequence_no": orderSequence_no,
-            "_json_att": "",
-            "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
-        }
-        h = self.session.post(url="https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue", data=order_dc_queue_data)
-        print(h.text)
-
-        i = self.session.post(url="https://kyfw.12306.cn/otn//payOrder/init?random="+str(int(round(time.time()*1000))), data=order_dc_queue_data)
-        print(i.text)
 
     def keep_online(self):
-        self.session.get(url="")
+        pass
 
     def start(self):
         if self.method == 'scan':
@@ -324,12 +363,8 @@ class Login():
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.80 Safari/537.36",
             "X-Requested-With": "XMLHttpRequest"
         }
-        # if "checkUser" in remark:
-        #     header["Referer"] = "https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc"
-        # elif "submitOrderRequest" in remark:
-        #     header["Referer"] = "https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc"
         return header
 
 if __name__ == "__main__":
-    log = Login()
-    log.start()
+    trainticket = TrainJourney()
+    trainticket.start()
