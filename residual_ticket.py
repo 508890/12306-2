@@ -136,7 +136,7 @@ class TrainTicket():
                                 ze_num = "{}\n{}".format(ze_num, ticket_price.get(scode, ''))
                     else:
                         buttonTextInfo = "{}\n{}".format(buttonTextInfo, "票价查询失败")
-                train_ticket_data[train_num] = ticket_info #[secretStr,train_no,train_num, 
+                train_ticket_data[train_num] = ticket_info.extend([from_station_name,to_station_name]) #[secretStr,train_no,train_num, 
                             # from_station_name, to_station_name, from_station_telecode,to_station_telecode,canWebBuy,date,yp_info,
                             # location_code,train_seat_feature,yp_ex, swz_num,tz_num, zy_num, ze_num, gr_num, rw_num, srrb_num, 
                             # yw_num,rz_num, yz_num, wz_num,  
