@@ -12,7 +12,7 @@ from qrcode_tool import Qrcode
 from residual_ticket import TrainTicket
 
 
-conf_url = "https://kyfw.12306.cn/otn/login/conf"
+# conf_url = "https://kyfw.12306.cn/otn/login/conf"
 user_agent = [
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.80 Safari/537.36",
         "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1",
@@ -34,7 +34,7 @@ class TrainJourney():
         self.qr_code = Qrcode()
         self.train_ticket = TrainTicket()
         self.session = requests.session()
-        self.session.headers=Login.headers()
+        self.session.headers=TrainJourney.headers()
         self.session.get(url=login_url)
         self.session.post(url=uamtk_url, data={"appid":"otn"})
         self.contact_table = PrettyTable(["编号","姓名","性别","证件类型","证件号","乘客类型","手机号","邮箱"])
@@ -104,6 +104,68 @@ class TrainJourney():
                 print(e)
             time.sleep(2)
 
+    def ordain_ticket(self):
+        start = input("请输入起点：")
+        end = input("请输入终点：")
+        date_str = input("请输入时间(eg:2018-12-12)：")
+        show_price = input("是否需要显示票价信息(1,显示、2,不显示)：")
+        ticket_info = self.train_ticket.search_ticket(start,end,date_str,show_price)
+        if not ticket_info:
+            print("No tickets!")
+
+        while 1:
+            choice_train_times = input("please input trains times:")
+            choice_train_info = ticket_info.get(choice_train_times, '')
+            if not choice_train_info:
+                print("input error!please retry!")
+            else:
+                break
+        
+        self.__check_user()
+        
+        self.__submit_order(choice_train_info)
+
+        init_dc_params = self.__init_dc()
+        RepeatSubmitToken, key_check_isChange, leftTicketStr = init_dc_params
+
+        contact_data = self.__get_passenger(RepeatSubmitToken)
+
+        while 1:
+            choice_passenger = input("请选择乘客名或者乘客编号：")
+            passenger_info = contact_data.get(choice_passenger, '')
+            if not passenger_info:
+                for p in contact_data.values():
+                    if choice_passenger == p[0]:
+                        passenger_info = p
+            if passenger_info:
+                break 
+            else:
+                print("你输入的选项有误，请重新输入！")
+
+        choice_seat_type = input("请选择座位类型：")
+
+        #座位类型,0,票类型,乘客名,证件类型,证件号,手机号码,保存常用联系人(Y或N)
+        passenger_ticket_str = ",".join([choice_seat_type, passenger_info[5], passenger_info[4], passenger_info[0],
+                                    passenger_info[2],passenger_info[3],passenger_info[6],'N'])
+        old_passenger_str = ",".join([passenger_info[0], passenger_info[2],passenger_info[3],passenger_info[4]+"_"])
+        
+        self.__check_order_info(choice_train_info, passenger_ticket_str, old_passenger_str, RepeatSubmitToken)
+
+        self.__get_queue_count(choice_train_info, leftTicketStr, RepeatSubmitToken)
+
+        train_location = choice_train_info[15]
+        self.__confirm_queue(passenger_ticket_str,old_passenger_str,key_check_isChange,
+                                    leftTicketStr,train_location, RepeatSubmitToken)
+
+        orderSequence_no = self.__get_order_id(RepeatSubmitToken)
+
+        self.__result_order(orderSequence_no, RepeatSubmitToken)
+
+    def keep_online(self):
+        online = 1
+        if online:
+            return online
+        return
 
     def print_status(self, value):
         sys.stdout.write('\r')
@@ -126,6 +188,13 @@ class TrainJourney():
         except Exception as e:
             print(e)
 
+    def start(self):
+        if self.method == 'scan':
+            uid = self.get_qr64()
+            if uid:
+                self.check_qr(uid)
+            # self.get_contact()
+            self.ordain_ticket()
 
     def __check_user(self):
         check_user_url = "https://kyfw.12306.cn/otn/login/checkUser"
@@ -278,76 +347,6 @@ class TrainJourney():
         pay_order_url = "https://kyfw.12306.cn/otn//payOrder/init?random="+str(int(round(time.time()*1000)))
         i = self.session.post(url=pay_order_url, data=order_dc_queue_data)
         print(i.text)
-
-    def ordain_ticket(self):
-        start = input("请输入起点：")
-        end = input("请输入终点：")
-        date_str = input("请输入时间(eg:2018-12-12)：")
-        show_price = input("是否需要显示票价信息(1,显示、2,不显示)：")
-        ticket_info = self.train_ticket.search_ticket(start,end,date_str,show_price)
-        if not ticket_info:
-            print("No tickets!")
-
-        while 1:
-            choice_train_times = input("please input trains times:")
-            choice_train_info = ticket_info.get(choice_train_times, '')
-            if not choice_train_info:
-                print("input error!please retry!")
-            else:
-                break
-        
-        self.__check_user()
-        
-        self.__submit_order(choice_train_info)
-
-        init_dc_params = self.__init_dc()
-        RepeatSubmitToken, key_check_isChange, leftTicketStr = init_dc_params
-
-        contact_data = self.__get_passenger(RepeatSubmitToken)
-
-        while 1:
-            choice_passenger = input("请选择乘客名或者乘客编号：")
-            passenger_info = contact_data.get(choice_passenger, '')
-            if not passenger_info:
-                for p in contact_data.values():
-                    if choice_passenger == p[0]:
-                        passenger_info = p
-            if passenger_info:
-                break 
-            else:
-                print("你输入的选项有误，请重新输入！")
-
-        choice_seat_type = input("请选择座位类型：")
-
-        #座位类型,0,票类型,乘客名,证件类型,证件号,手机号码,保存常用联系人(Y或N)
-        passenger_ticket_str = ",".join([choice_seat_type, passenger_info[5], passenger_info[4], passenger_info[0],
-                                    passenger_info[2],passenger_info[3],passenger_info[6],'N'])
-        old_passenger_str = ",".join([passenger_info[0], passenger_info[2],passenger_info[3],passenger_info[4]+"_"])
-        
-        self.__check_order_info(choice_train_info, passenger_ticket_str, old_passenger_str, RepeatSubmitToken)
-
-        self.__get_queue_count(choice_train_info, leftTicketStr, RepeatSubmitToken)
-
-        train_location = choice_train_info[15]
-        self.__confirm_queue(passenger_ticket_str,old_passenger_str,key_check_isChange,
-                                    leftTicketStr,train_location, RepeatSubmitToken)
-
-        orderSequence_no = self.__get_order_id(RepeatSubmitToken)
-
-        self.__result_order(orderSequence_no, RepeatSubmitToken)
-
-
-
-    def keep_online(self):
-        pass
-
-    def start(self):
-        if self.method == 'scan':
-            uid = self.get_qr64()
-            if uid:
-                self.check_qr(uid)
-            # self.get_contact()
-            self.ordain_ticket()
     
     @staticmethod
     def headers(remark=None):
