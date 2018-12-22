@@ -3,7 +3,7 @@ import json
 import random
 import time
 import requests
-import sendSMS
+# import sendSMS
 from city_code import CityCode
 from prettytable import PrettyTable
 
@@ -187,25 +187,26 @@ if __name__ == "__main__":
     # date_str = input("请输入时间(eg:2018-12-12)：")
     # # tickect_type = input("请输入类型：")
     # show_price = input("是否需要显示票价信息(1,显示、2,不显示)：")
-    start = "沈阳"
-    end = "南充"
-    date_str = "2019-01-15"
+    start = "成都"
+    end = "西昌"
+    date_str = "2018-12-31"
     # tickect_type = input("请输入类型：")
     show_price = 2
-    train_no = "K388"
+    # train_no = "K388"
+    train_tickets = ticket.search_ticket(start,end,date_str,show_price)
     
-    while 1:
-        train_tickets = ticket.search_ticket(start,end,date_str,show_price)
-        ticket_data = train_tickets.get(train_no, [])
-        if ticket_data:
-            yw = ticket_data[28]
-            yz = ticket_data[29]
-            notice_times = 1
-            if yw:
-                notice_str = "你好，{} {}至{}的{}列车的硬卧还有票，请抓紧时间购票！这是第{}次通知！".format(date_str,start,end,train_no, notice_times)
-                notice_times+=1
-                sendSMS.sendGroupTemplateSMS(notice=notice_str)
-                if notice_times>3:
-                    break  
-        time.sleep(int(str(random.uniform(30,50))[:2]))
+    # while 1:
+        # train_tickets = ticket.search_ticket(start,end,date_str,show_price)
+        # ticket_data = train_tickets.get(train_no, [])
+        # if ticket_data:
+            # yw = ticket_data[28]
+            # yz = ticket_data[29]
+            # notice_times = 1
+            # if yw:
+                # notice_str = "你好，{} {}至{}的{}列车的硬卧还有票，请抓紧时间购票！这是第{}次通知！".format(date_str,start,end,train_no, notice_times)
+                # notice_times+=1
+                # sendSMS.sendGroupTemplateSMS(notice=notice_str)
+                # if notice_times>3:
+                    # break  
+        # time.sleep(int(str(random.uniform(30,50))[:2]))
 

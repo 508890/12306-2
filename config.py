@@ -13,8 +13,8 @@ class config():
     def ticket_conf(self):
         train_ticket_config = dict()
         for ticket_no in self.ticket_sections:
-            options = self.conf.options(ticket_no)
             tf = {}
+            options = self.conf.options(ticket_no)
             for option in options:
                 tf[option] =  self.conf.get(ticket_no, option)
                 if option in ["date", "train_no", "seat_type", "passenger_name"]:
@@ -23,15 +23,16 @@ class config():
         return train_ticket_config
 
     def general_conf(self):
-        general_config = dict()
         refresh_interval = self.conf.get("general", "refresh_ticket_interval")
         notice_level = self.conf.get("general", "notice_level")
         email = self.conf.get("contact", "e-mail").split(',')
         phone = self.conf.get("contact", "phone_num").split(',')
-        general_config["refresh_interval"] = refresh_interval
-        general_config["notice_level"] = notice_level
-        general_config["email"] = email
-        general_config["phone"] = phone
+        general_config = {
+            "refresh_interval" : refresh_interval,
+            "notice_level" : notice_level,
+            "email" : email,
+            "phone" : phone
+            }
         return general_config
 
     def proxy_conf(self):
