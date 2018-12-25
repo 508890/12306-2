@@ -10,6 +10,7 @@ from urllib.parse import unquote
 from prettytable import PrettyTable
 from qrcode_tool import Qrcode
 from residual_ticket import TrainTicket
+from urls import urls_dict as url
 
 
 # conf_url = "https://kyfw.12306.cn/otn/login/conf"
@@ -24,19 +25,19 @@ user_agent = [
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.1 Safari/537.36"
     ]
 
-
 class TrainJourney():
     
     def __init__(self, method='scan', username=None, passwd=None):
-        login_url = "https://kyfw.12306.cn/otn/resources/login.html"
-        uamtk_url = "https://kyfw.12306.cn/passport/web/auth/uamtk-static"
+        self.host = "https://kyfw.12306.cn"
         self.method = method 
         self.qr_code = Qrcode()
         self.train_ticket = TrainTicket()
         self.session = requests.session()
-        self.session.headers=TrainJourney.headers()
-        self.session.get(url=login_url)
-        self.session.post(url=uamtk_url, data={"appid":"otn"})
+        self.session.headers = self.headers()
+        self.session.get(url=self.host+url['login']['url'], 
+                    headers=self.headers(url['login']['referer']))
+        self.session.post(url=self.host+url['uamtk']['url'], data={"appid":"otn"}, 
+                    headers=self.headers(url['uamtk']['referer']))
         self.contact_table = PrettyTable(["编号","姓名","性别","证件类型","证件号","乘客类型","手机号","邮箱"])
 
     def get_qr64(self, show='TERMINAL'):
@@ -44,8 +45,7 @@ class TrainJourney():
         get qrcode picture, return params uid
         '''
         data = {"appid":"otn"}
-        qr_url = "https://kyfw.12306.cn/passport/web/create-qr64"
-        qr_res = self.session.post(url=qr_url, data=data)
+        qr_res = self.session.post(url=self.host+url['create_qr']['url'], data=data, headers=url['create_qr']['referer'])
         try:
             qr_json = json.loads(qr_res.text)
             if qr_json.get("result_message", '') == "生成二维码成功":
@@ -69,11 +69,8 @@ class TrainJourney():
         '''
         times = 0
         data = {"uuid": uid, "appid": "otn"}
-        check_qr_url = "https://kyfw.12306.cn/passport/web/checkqr"
-        user_login_url = "https://kyfw.12306.cn/otn/passport?redirect=/otn/login/userLogin"
-        uamauthclient_url = "https://kyfw.12306.cn/otn/uamauthclient"
         while 1:
-            res = self.session.post(url=check_qr_url, data=data)
+            res = self.session.post(url=self.host+url['check_qr']['url'], data=data, headers=self.headers(url['check_qr']['referer']))
             try:
                 res_json = json.loads(res.text)
                 code_status = res_json.get('result_code', '')
@@ -84,16 +81,16 @@ class TrainJourney():
                     self.print_status("扫描成功，请确认{}".format("。"*(times%4)))
                 elif code_status == "2":
                     self.print_status("确认成功，即将登录。。。")
-                    self.session.get(url=user_login_url)
-                    uamtk_url = "https://kyfw.12306.cn/passport/web/auth/uamtk?callback=jQuery191{}_{}".format(
-                        ''.join(str(random.choice(range(10))) for _ in range(19)), int(round(time.time()*1000)))
-                    verfiy = self.session.post(url=uamtk_url, data={"appid":"otn", "_json_att":""})
+                    self.session.get(url=self.host+url['user_login']['url'], headers=self.headers(url['user_login']['referer']))
+                    uamtk_url = self.host+url['uamtk']['url'].format(''.join(str(random.choice(range(10))) for _ in range(19)), 
+                                int(round(time.time()*1000)))
+                    verfiy = self.session.post(url=uamtk_url, data={"appid":"otn", "_json_att":""}, headers=self.headers(url['uamtk']['referer']))
                     try:
                         verfiy_json = json.loads(verfiy.text.split('(')[1].split(')')[0])
                         tk = verfiy_json.get("newapptk", '')
                     except:
                         print("获取tk参数错误！")
-                    self.session.post(url=uamauthclient_url, data={'tk':tk})
+                    self.session.post(url=self.host+url['uamauth_client']['url'], data={'tk':tk}, headers=self.headers(url['uamauth_client']['referer']))
                     break
                 elif code_status == "3":
                     self.print_status("二维码已过期。。。")
@@ -104,7 +101,7 @@ class TrainJourney():
                 print(e)
             time.sleep(2)
 
-    def ordain_ticket(self):
+    def ordain_ticket(self, method='auto'):
         start = input("请输入起点：")
         end = input("请输入终点：")
         date_str = input("请输入时间(eg:2018-12-12)：")
@@ -127,8 +124,8 @@ class TrainJourney():
 
         init_dc_params = self.__init_dc()
         RepeatSubmitToken, key_check_isChange, leftTicketStr = init_dc_params
-
-        contact_data = self.__get_passenger(RepeatSubmitToken)
+        print_contact = True if method!='auto' else False
+        contact_data = self.__get_passenger(RepeatSubmitToken, print_contact)
 
         while 1:
             choice_passenger = input("请选择乘客名或者乘客编号：")
@@ -197,8 +194,10 @@ class TrainJourney():
             self.ordain_ticket()
 
     def __check_user(self):
-        check_user_url = "https://kyfw.12306.cn/otn/login/checkUser"
-        self.session.post(url=check_user_url, data={"_json_att":""})
+        r_check_user = self.session.post(url=self.host+url['check_user']['url'], data={"_json_att":""}, 
+                            headers=self.headers(self.host+url['check_user']['referer']))
+        j_check_user = json.loads(r_check_user.text)
+        print(r_check_user.text)
 
     def __submit_order(self, train_info):
         data = {
@@ -211,14 +210,13 @@ class TrainJourney():
             "query_to_station_name": train_info[38],
             "undefined":"" 
         }
-        submit_order_url =  "https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest"
-        a = self.session.post(url=submit_order_url, data=data)
-        print(a.text)
+        r_submit_order = self.session.post(url=self.host+url['submit_order']['url'], data=data, 
+                            headers=self.headers(url['submit_order']['referer']))
+        print(r_submit_order.text)
 
     def __init_dc(self):
-        init_dc_url = "https://kyfw.12306.cn/otn/confirmPassenger/initDc"
-        b = self.session.post(url=init_dc_url, data={"_json_att":""})
-        print(b.text)
+        b = self.session.post(url=self.host+url['init_dc']['url'], data={"_json_att":""}, 
+                    headers=self.headers(url['init_dc']['referer']))
         rst_re = re.search(r"(?<=RepeatSubmitToken\s=\s\').+?(?=\';)", b.text)
         kci_re = re.search(r"(?<=key_check_isChange\':\').+?(?=\',)", b.text)
         lts_re = re.search(r"(?<=leftTicketStr\':\').+?(?=\',)", b.text)
@@ -227,13 +225,11 @@ class TrainJourney():
         leftTicketStr = lts_re.group() if lts_re else ""
         return [RepeatSubmitToken,key_check_isChange,leftTicketStr]
 
-    def __get_passenger(self,RepeatSubmitToken):
-        get_passenger_url = "https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs"
-        c = self.session.post(url=get_passenger_url, 
-        data={"_json_att":"", "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken})
-        print(c.text)
-
-        passsenger_data = json.loads(c.text)
+    def __get_passenger(self,RepeatSubmitToken, print_contact=False):
+        r_passenger = self.session.post(url=self.host+url['get_passenger']['url'], 
+                data={"_json_att":"", "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken}, 
+                headers=self.headers(url['get_passenger']['referer']))
+        passsenger_data = json.loads(r_passenger.text)
         if passsenger_data.get('status', '') == True:
             contact_data = {}
             normal_passengers = passsenger_data.get('data',{}).get('normal_passengers',[])
@@ -257,12 +253,14 @@ class TrainJourney():
                 passenger_id_no,passenger_type_name, mobile_no, email])
                 contact_data[passenger_code] = [passenger_name, sex_code, passenger_id_type_code, 
                             passenger_id_no, passenger_type, passenger_flag, mobile_no]
-            print(self.contact_table)
+            if print_contact:
+                print(self.contact_table)
             return contact_data
         else:
             return
 
-    def __check_order_info(self,seat_type,  passenger_ticket_str,old_passenger_str,RepeatSubmitToken):
+    def __check_order_info(self,seat_type,  passenger_ticket_str,
+                                    old_passenger_str,RepeatSubmitToken):
         check_order_data = {
             "cancel_flag": "2",
             "bed_level_order_num": "000000000000000000000000000000",
@@ -274,9 +272,9 @@ class TrainJourney():
             "_json_att": "",
             "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
         }
-        check_order_url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
-        d = self.session.post(url=check_order_url, data=check_order_data)
-        print(d.text)
+        r_check_order = self.session.post(url=self.host+url['check_order']['url'] , data=check_order_data, 
+                        headers=self.headers(url['check_order']['referer']))
+        print(r_check_order.text)
 
     def __get_queue_count(self,train_info,leftTicketStr,RepeatSubmitToken):
         GMT_FORMAT = '%a %b %d %Y 00:00:00 GMT+0800 (China Standard Time)'
@@ -293,12 +291,12 @@ class TrainJourney():
             "_json_att": "",
             "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
         }
-        get_queue_count_url = "https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount"
-        e = self.session.post(url=get_queue_count_url, data=queue_count_data)
-        print(e.text)
+        r_queue_count = self.session.post(url=self.host+url['get_queue_count']['url'], data=queue_count_data, 
+                    headers=self.headers(url['get_queue_count']['referer']))
+        print(r_queue_count.text)
 
-    def __confirm_queue(self,passenger_ticket_str,old_passenger_str,key_check_isChange,
-                                    leftTicketStr,train_location, RepeatSubmitToken):
+    def __confirm_queue(self,passenger_ticket_str,old_passenger_str,
+            key_check_isChange, leftTicketStr,train_location, RepeatSubmitToken):
         confirm_queue_data = {
             "passengerTicketStr": passenger_ticket_str,
             "oldPassengerStr": old_passenger_str,
@@ -315,41 +313,36 @@ class TrainJourney():
             "_json_att":"", 
             "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
         }
-        confirm_queue_url = "https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue"
-        f = self.session.post(url=confirm_queue_url,data=confirm_queue_data)
-        print(f.text)
+        r_confirm_queue = self.session.post(url=self.host+url['confirm_single']['url'], data=confirm_queue_data, 
+                    headers=self.headers(url['confirm_single']['referer']))
+        print(r_confirm_queue.text)
 
     def __get_order_id(self,RepeatSubmitToken):
-        get_orderid_url = ("https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?"
-                            "random={}".format(int(round(time.time()*1000)))+
-                            "&tourFlag=dc"
-                            "&_json_att="
-                            "&REPEAT_SUBMIT_TOKEN={}".format(RepeatSubmitToken))
-        g = self.session.get(url=get_orderid_url)
-        print(g.text)
+        get_orderid_url = self.host+url['query_order_wait_time']['url'].format(int(round(time.time()*1000)), RepeatSubmitToken)
+        r_order_id = self.session.get(url=get_orderid_url, headers=self.headers(url['query_order_wait_time']['referer']))
+        print(r_order_id.text)
         try:
-            orderSequence_no = json.loads(g.text).get('data',{}).get('orderId','')
+            orderSequence_no = json.loads(r_order_id.text).get('data',{}).get('orderId','')
             return orderSequence_no
         except:
             print("发生了错误！")
             return 
 
     def __result_order(self,orderSequence_no,RepeatSubmitToken):
-        result_queue_url = "https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue"
         order_dc_queue_data = {
             "orderSequence_no": orderSequence_no,
             "_json_att": "",
             "REPEAT_SUBMIT_TOKEN": RepeatSubmitToken
         }
-        h = self.session.post(url=result_queue_url, data=order_dc_queue_data)
-        print(h.text)
+        r_result_order = self.session.post(url=self.host+url['result_order']['url'], data=order_dc_queue_data, 
+                headers=self.headers(url['result_order']['referer']))
+        print(r_result_order.text)
 
-        pay_order_url = "https://kyfw.12306.cn/otn//payOrder/init?random="+str(int(round(time.time()*1000)))
-        i = self.session.post(url=pay_order_url, data=order_dc_queue_data)
-        print(i.text)
+        pay_order_url = self.host+url['pay_order']['url'].format(int(round(time.time()*1000)))
+        r_pay_order = self.session.post(url=pay_order_url, data=order_dc_queue_data)
+        print(r_pay_order.text)
     
-    @staticmethod
-    def headers(remark=None):
+    def headers(self, referer=None):
         header = {
             "Accept": "*/*",
             "Accept-Encoding": "gzip, deflate, br",
@@ -362,6 +355,8 @@ class TrainJourney():
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.80 Safari/537.36",
             "X-Requested-With": "XMLHttpRequest"
         }
+        if referer:
+            header['Referer'] = referer
         return header
 
 if __name__ == "__main__":
