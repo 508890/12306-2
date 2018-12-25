@@ -22,15 +22,15 @@ class MongoDB():
     def insert_one(self, data):
         self.cursor.insert_one(data)
 
-if __name__ == "__main__":
-    HOST = '118.24.141.137'
-    PORT = 13014
-    DB = 'data'
-    COLL = 'test'
-    USERNAME = 'hsx'
-    PASSWORD = 'G5u9zenNcRof1JaU'
-    mongo = MongoDB(HOST, PORT, DB, COLL, USERNAME, PASSWORD)
 
+if __name__ == "__main__":
+    HOST = 'xxx.xx.xx.xx'
+    PORT = xxx
+    DB = 'xxx'
+    COLL = 'xxx'
+    USERNAME = 'xxx'
+    PASSWORD = 'xxxxxxxxx'
+    mongo = MongoDB(HOST, PORT, DB, COLL, USERNAME, PASSWORD)
 
 
 
